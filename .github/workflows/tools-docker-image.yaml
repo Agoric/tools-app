@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         # with:
-        #   ref: ${{ github.event.inputs.CLUSTER_NAME }}
+        #   ref: ${{ github.event.inputs.BRANCH_NAME }}
 
       - name: Generate Timestamp
         run: |

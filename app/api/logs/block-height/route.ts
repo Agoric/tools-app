@@ -257,84 +257,98 @@ const streamFile = (
 };
 
 export const GET = async (request: NextRequest) => {
-  const body = Object.fromEntries(
-    new URL(request.url).searchParams.entries(),
-  ) as unknown as LogsRequestBody;
+  try {
+    const body = Object.fromEntries(
+      new URL(request.url).searchParams.entries(),
+    ) as unknown as LogsRequestBody;
 
-  if (!(body.clusterName && body.endTime && body.namespace && body.startTime))
-    return NextResponse.json('Invalid Form', { status: 400 });
+    if (!(body.clusterName && body.endTime && body.namespace && body.startTime))
+      return NextResponse.json({ message: 'Invalid Form' }, { status: 400 });
 
-  const accessToken = await getAccessToken();
+    const accessToken = await getAccessToken();
 
-  const fileName = await fetchLogsBetween(accessToken, body);
+    const fileName = await fetchLogsBetween(accessToken, body);
 
-  const data = streamFile(fileName);
+    const data = streamFile(fileName);
 
-  after(() =>
-    unlink(
-      fileName,
-      (err) => err && console.error(`Error removing file ${fileName}: `, err),
-    ),
-  );
+    after(() =>
+      unlink(
+        fileName,
+        (err) => err && console.error(`Error removing file ${fileName}: `, err),
+      ),
+    );
 
-  return new NextResponse(data, {
-    headers: new Headers({
-      'Content-Disposition': `attachment; filename=${basename(fileName)}`,
-      'Content-Length': String(statSync(fileName).size),
-      'Content-Type': 'text/plain',
-    }),
-    status: 200,
-  });
+    return new NextResponse(data, {
+      headers: new Headers({
+        'Content-Disposition': `attachment; filename=${basename(fileName)}`,
+        'Content-Length': String(statSync(fileName).size),
+        'Content-Type': 'text/plain',
+      }),
+      status: 200,
+    });
+  } catch (err) {
+    return NextResponse.json({ message: String(err) }, { status: 500 });
+  }
 };
 
 export const POST = async (request: NextRequest) => {
-  const body: TimestampsRequestBody = await request.json();
+  try {
+    const body: TimestampsRequestBody = await request.json();
 
-  if (
-    !(
-      body.clusterName &&
-      body.namespace &&
-      body.startBlockHeight &&
-      (!body.endBlockHeight || body.endBlockHeight >= body.startBlockHeight)
+    if (
+      !(
+        body.clusterName &&
+        body.namespace &&
+        body.startBlockHeight &&
+        (!body.endBlockHeight || body.endBlockHeight >= body.startBlockHeight)
+      )
     )
-  )
-    return NextResponse.json('Invalid Form', { status: 400 });
+      return NextResponse.json({ message: 'Invalid Form' }, { status: 400 });
 
-  const accessToken = await getAccessToken();
+    const accessToken = await getAccessToken();
 
-  const beginBlockFilter = `
+    const beginBlockFilter = `
 jsonPayload.blockHeight=${body.startBlockHeight}
 jsonPayload.type="${START_BLOCK_EVENT_TYPE}"
 resource.labels.cluster_name="${body.clusterName}"
 resource.labels.namespace_name="${body.namespace}"
     `;
-  const commitBlockFinishFilter = `
+    const commitBlockFinishFilter = `
 jsonPayload.blockHeight=${body.endBlockHeight}
 jsonPayload.type="${COMMIT_BLOCK_FINISH_EVENT_TYPE}"
 resource.labels.cluster_name="${body.clusterName}"
 resource.labels.namespace_name="${body.namespace}"
     `;
 
-  const foundBeginBlock = await searchForLogEntry({
-    accessToken,
-    filter: beginBlockFilter,
-  });
+    const foundBeginBlock = await searchForLogEntry({
+      accessToken,
+      filter: beginBlockFilter,
+    });
 
-  if (!foundBeginBlock)
-    return NextResponse.json('Start time search exhausted', { status: 404 });
+    if (!foundBeginBlock)
+      return NextResponse.json(
+        { message: 'Start time search exhausted' },
+        { status: 404 },
+      );
 
-  const foundCommitBlockFinish = await searchForLogEntry({
-    accessToken,
-    filter: commitBlockFinishFilter,
-    searchForward: true,
-    startTime: new Date(foundBeginBlock.timestamp),
-  });
+    const foundCommitBlockFinish = await searchForLogEntry({
+      accessToken,
+      filter: commitBlockFinishFilter,
+      searchForward: true,
+      startTime: new Date(foundBeginBlock.timestamp),
+    });
 
-  if (!foundCommitBlockFinish)
-    return NextResponse.json('End time search exhausted', { status: 404 });
+    if (!foundCommitBlockFinish)
+      return NextResponse.json(
+        { message: 'End time search exhausted' },
+        { status: 404 },
+      );
 
-  return NextResponse.json({
-    endTime: foundCommitBlockFinish.timestamp,
-    startTime: foundBeginBlock.timestamp,
-  });
+    return NextResponse.json({
+      endTime: foundCommitBlockFinish.timestamp,
+      startTime: foundBeginBlock.timestamp,
+    });
+  } catch (err) {
+    return NextResponse.json({ message: String(err) }, { status: 500 });
+  }
 };

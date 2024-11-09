@@ -48,26 +48,35 @@ const Page = () => {
 
       const data = (await timestampsResponse.json()) as {
         endTime: string;
+        message?: string;
         startTime: string;
       };
 
-      const downloadUrl = new URL(
-        '/api/logs/block-height',
-        window.location.origin,
-      );
+      if (!timestampsResponse.ok)
+        setState((prevState) => ({
+          ...prevState,
+          inProgress: false,
+          message: String(data.message),
+        }));
+      else {
+        const downloadUrl = new URL(
+          '/api/logs/block-height',
+          window.location.origin,
+        );
 
-      downloadUrl.searchParams.set('clusterName', clusterName);
-      downloadUrl.searchParams.set('endTime', data.endTime);
-      downloadUrl.searchParams.set('namespace', namespace);
-      downloadUrl.searchParams.set('startTime', data.startTime);
+        downloadUrl.searchParams.set('clusterName', clusterName);
+        downloadUrl.searchParams.set('endTime', data.endTime);
+        downloadUrl.searchParams.set('namespace', namespace);
+        downloadUrl.searchParams.set('startTime', data.startTime);
 
-      window.open(downloadUrl.toString(), '_blank', 'noopener');
+        window.open(downloadUrl.toString(), '_blank', 'noopener');
 
-      setState((prevState) => ({
-        ...prevState,
-        inProgress: false,
-        message: '',
-      }));
+        setState((prevState) => ({
+          ...prevState,
+          inProgress: false,
+          message: '',
+        }));
+      }
     } catch (err) {
       setState((prevState) => ({
         ...prevState,
