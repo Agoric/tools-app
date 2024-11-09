@@ -50,4 +50,4 @@ on:
   #       description: Branch to build the image from
   #       required: true
   push:
-    branches: ['usman/tools-app']
+    branches: ['usman/app-base']
