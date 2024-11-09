@@ -1,0 +1,19 @@
+.select-container {
+  @apply border border-gray-50;
+}
+  
+.select-container :global ._select__control {
+  @apply cursor-pointer px-4 py-2;
+}
+  
+.select-container :global ._select__menu {
+  @apply rounded shadow-lg;
+}
+  
+.select-container :global ._select__option {
+  @apply bg-white cursor-pointer hover:bg-gray-100 px-4 py-2 text-black;
+}
+  
+.select-container :global ._select__value-container--is-multi {
+  @apply flex-nowrap;
+}
