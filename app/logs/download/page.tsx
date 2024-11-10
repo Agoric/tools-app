@@ -121,12 +121,14 @@ const Page = () => {
         <div className="flex flex-col space-y-1 w-full">
           <label>End Block Height</label>
           <TextInput
-            className="border border-solid border-gray w-full"
-            onChange={({ target: { value } }) =>
-              !isNaN(Number(value)) &&
-              setState((prevState) => ({ ...prevState, endBlockHeight: value }))
-            }
-            value={state.endBlockHeight}
+            className="border border-solid border-gray disabled:bg-gray-200 w-full"
+            disabled
+            // onChange={({ target: { value } }) =>
+            //   !isNaN(Number(value)) &&
+            //   setState((prevState) => ({ ...prevState, endBlockHeight: value }))
+            // }
+            // value={state.endBlockHeight}
+            value={state.startBlockHeight}
           />
         </div>
       </div>
