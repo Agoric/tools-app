@@ -164,9 +164,7 @@ timestamp >= "${startTime}" AND timestamp <= "${endTime}"
   if (!response.ok)
     if (response.status === 429) {
       console.log('Hit quota limit, backing off for 10 seconds');
-      await Promise.resolve((resolve: () => void) =>
-        setTimeout(resolve, 10000),
-      );
+      await new Promise((resolve) => setTimeout(resolve, 10000));
       return queryLog(
         accessToken,
         endTime,
