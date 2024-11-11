@@ -12,8 +12,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        # with:
-        #   ref: ${{ github.event.inputs.BRANCH_NAME }}
+        with:
+          ref: ${{ github.event.inputs.BRANCH_NAME }}
 
       - name: Generate Timestamp
         run: |
@@ -43,11 +43,9 @@ jobs:
 name: Create Tools Docker Image
 
 on:
-  # workflow_dispatch:
-  #   inputs:
-  #     BRANCH_NAME:
-  #       default: main
-  #       description: Branch to build the image from
-  #       required: true
-  push:
-    branches: ['usman/app-base']
+  workflow_dispatch:
+    inputs:
+      BRANCH_NAME:
+        default: main
+        description: Branch to build the image from
+        required: true
