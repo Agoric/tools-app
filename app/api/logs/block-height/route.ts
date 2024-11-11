@@ -1,4 +1,3 @@
-import { Logging } from '@google-cloud/logging';
 import {
   createReadStream,
   createWriteStream,
@@ -70,8 +69,6 @@ type TimestampsRequestBody = RequestContext & {
   endBlockHeight: number;
   startBlockHeight: number;
 };
-
-const logging = new Logging();
 
 const ADDITIONAL_FILTERS = `
 resource.labels.container_name="log-slog"

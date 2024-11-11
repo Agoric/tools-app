@@ -1,7 +1,6 @@
 {
   "author": "Agoric",
   "dependencies": {
-    "@google-cloud/logging": "11.2.0",
     "next": "15.0.3",
     "tmp": "^0.2.3"
   },
