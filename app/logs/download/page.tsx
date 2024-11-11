@@ -134,7 +134,7 @@ const Page = () => {
       </div>
 
       <button
-        className="border border-solid border-black disabled:pointer-events-none disabled:text-gray px-2 py-1 text-center"
+        className="border border-solid border-black disabled:border-gray-400 disabled:pointer-events-none disabled:text-gray-400 px-2 py-1 text-center"
         disabled={state.inProgress || !validInputs}
         onClick={fetchTimestamps}
       >

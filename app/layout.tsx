@@ -13,7 +13,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => (
         <ClusterProvider>
           <NamespaceProvider>
             {/* Add Sidebar here */}
-            <div className="flex flex-col h-full items-center justify-center w-full">
+            <div className="flex flex-col h-full items-center w-full">
               <Header />
               {children}
             </div>
