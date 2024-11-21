@@ -6,6 +6,7 @@ import {
   unlink,
 } from 'fs';
 import { basename } from 'path';
+import { ReadableOptions } from 'stream';
 import {
   NextRequest,
   NextResponse,
@@ -13,7 +14,7 @@ import {
 } from 'next/server';
 import { fileSync } from 'tmp';
 import { client as DatabaseClient } from 'api/client/database';
-import { ReadableOptions } from 'stream';
+import { client as Logger } from 'api/client/logging';
 
 type LogEntry = {
   id: number;
@@ -80,7 +81,7 @@ const fetchLogsBetween = async (body: LogsRequestBody) => {
   const pageSize = 1000;
 
   while (true) {
-    console.log(
+    Logger.log(
       `Fetching logs between ${body.startTime} to ${body.endTime} with offset ${pageOffset} and page size ${pageSize}`,
     );
 
@@ -146,12 +147,12 @@ const streamFile = (
       );
       downloadStream.on('end', () => controller.close());
       downloadStream.on('error', (error: NodeJS.ErrnoException) => {
-        console.error('Stream error: ', error);
+        Logger.error('Stream error: ', error);
         controller.error(error);
       });
     },
     cancel: (reason) => {
-      console.warn('Stream cancelled because: ', reason);
+      Logger.warn('Stream cancelled because: ', reason);
       downloadStream.destroy();
     },
   });
@@ -173,7 +174,7 @@ export const GET = async (request: NextRequest) => {
     after(() =>
       unlink(
         fileName,
-        (err) => err && console.error(`Error removing file ${fileName}: `, err),
+        (err) => err && Logger.error(`Error removing file ${fileName}: `, err),
       ),
     );
 
