@@ -95,7 +95,8 @@ const fetchLogsBetween = async (body: LogsRequestBody) => {
         if (!canWrite)
           await new Promise((resolve) => writeStream.once('drain', resolve));
       }
-    else break;
+
+    if (data.length < pageSize) break;
   }
 
   return new Promise<typeof name>((resolve, reject) => {
