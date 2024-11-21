@@ -12,10 +12,11 @@ import {
   unstable_after as after,
 } from 'next/server';
 import { fileSync } from 'tmp';
-import { getAccessToken, serviceAccount } from 'api/utils';
+import { client as DatabaseClient } from 'api/client/database';
 import { ReadableOptions } from 'stream';
 
 type LogEntry = {
+  id: number;
   insertId: string;
   jsonPayload: {
     blockHeight: number;
@@ -48,11 +49,8 @@ type LogEntry = {
   timestamp: string;
 };
 
-const CHUNK_SIZE = 6 * 60 * 60 * 1000; // 6 hours or 21600000 ms
 const COMMIT_BLOCK_FINISH_EVENT_TYPE = 'cosmic-swingset-commit-block-finish';
-const LOG_ENTRIES_ENDPOINT = 'https://logging.googleapis.com/v2/entries:list';
-const MAXIMUM_DAYS = 30;
-const MILLI_SECONDS_PER_DAY = 24 * 60 * 60 * 1000; // 86400000 ms
+const POD_FILTER = `"resourceLabels" @@ '$.pod_name == "follower-0"' OR "resourceLabels" @@ '$.pod_name == "fork1-0"' OR "resourceLabels" @@ '$.pod_name == "validator-primary-0"'`;
 const START_BLOCK_EVENT_TYPE = 'cosmic-swingset-begin-block';
 
 type RequestContext = {
@@ -70,21 +68,7 @@ type TimestampsRequestBody = RequestContext & {
   startBlockHeight: number;
 };
 
-const ADDITIONAL_FILTERS = `
-resource.labels.container_name="log-slog"
-resource.labels.pod_name=("fork1-0" OR "follower-0" OR "validator-primary-0")
-resource.type="k8s_container"
-`;
-
-const fetchLogsBetween = async (
-  accessToken: Awaited<ReturnType<typeof getAccessToken>>,
-  body: LogsRequestBody,
-) => {
-  const filter = `
-resource.labels.cluster_name="${body.clusterName}"
-resource.labels.namespace_name="${body.namespace}"
-    `;
-
+const fetchLogsBetween = async (body: LogsRequestBody) => {
   const { fd, name } = fileSync({
     postfix: '.log',
     prefix: 'logs-',
@@ -92,30 +76,26 @@ resource.labels.namespace_name="${body.namespace}"
 
   const writeStream = createWriteStream(null as unknown as PathLike, { fd });
 
-  let pageToken = undefined;
+  let pageOffset = 0;
+  const pageSize = 1000;
 
-  console.log(`Fetching logs between ${body.startTime} to ${body.endTime}`);
-
-  do {
-    const data = await queryLog(
-      accessToken,
-      body.endTime,
-      body.startTime,
-      filter,
-      undefined,
-      pageToken,
+  while (true) {
+    console.log(
+      `Fetching logs between ${body.startTime} to ${body.endTime} with offset ${pageOffset} and page size ${pageSize}`,
     );
 
-    if (data.entries) {
-      for (const entry of data.entries) {
-        const canWrite = writeStream.write(JSON.stringify(entry) + '\n');
+    const data = await queryLog(body, pageOffset, pageSize);
+    pageOffset += pageSize;
+
+    if (data.length)
+      for (const entry of data) {
+        const { id: _, ...log } = entry;
+        const canWrite = writeStream.write(JSON.stringify(log) + '\n');
         if (!canWrite)
           await new Promise((resolve) => writeStream.once('drain', resolve));
       }
-    }
-
-    pageToken = data.nextPageToken;
-  } while (pageToken);
+    else break;
+  }
 
   return new Promise<typeof name>((resolve, reject) => {
     let closed: boolean;
@@ -131,100 +111,26 @@ resource.labels.namespace_name="${body.namespace}"
 };
 
 const queryLog = async (
-  accessToken: string,
-  endTime: string,
-  startTime: string,
-  filter: string = '',
-  pageSize: number | undefined = undefined,
-  pageToken: string | undefined = undefined,
+  body: LogsRequestBody,
+  pageOffset: number = 0,
+  pageSize: number = 1000,
 ) => {
-  const fullFilter = `
-${ADDITIONAL_FILTERS}
-${filter}
-timestamp >= "${startTime}" AND timestamp <= "${endTime}"
-  `;
+  const { rows } = await DatabaseClient.pool.query<LogEntry>(`
+    SELECT *
+    FROM slogs
+    WHERE (
+      "resourceLabels" @@ '$.cluster_name == "${body.clusterName}"'
+      AND "resourceLabels" @@ '$.namespace_name == "${body.namespace}"'
+      AND (${POD_FILTER})
+      AND "timestamp" >= '${body.startTime}'
+      AND "timestamp" <= '${body.endTime}'
+    )
+    ORDER BY "timestamp" ASC
+    LIMIT ${pageSize}
+    OFFSET ${pageOffset}
+  `);
 
-  const body = {
-    filter: fullFilter,
-    orderBy: 'timestamp asc',
-    pageSize,
-    pageToken,
-    resourceNames: ['projects/' + serviceAccount.project_id],
-  };
-
-  const response = await fetch(LOG_ENTRIES_ENDPOINT, {
-    body: JSON.stringify(body),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    method: 'POST',
-  });
-
-  if (!response.ok)
-    if (response.status === 429) {
-      console.log('Hit quota limit, backing off for 10 seconds');
-      await new Promise((resolve) => setTimeout(resolve, 10000));
-      return queryLog(
-        accessToken,
-        endTime,
-        startTime,
-        filter,
-        pageSize,
-        pageToken,
-      );
-    } else
-      throw Error(
-        `Failed to query logs due to error: ${await response.text()}`,
-      );
-
-  return (await response.json()) as {
-    entries: Array<LogEntry>;
-    nextPageToken?: string;
-  };
-};
-
-const searchForLogEntry = async ({
-  accessToken,
-  filter,
-  searchForward,
-  startTime,
-}: {
-  accessToken: Awaited<ReturnType<typeof getAccessToken>>;
-  filter: string;
-  searchForward?: boolean;
-  startTime?: Date;
-}) => {
-  const nowDate = new Date();
-  const startDate = startTime || nowDate;
-
-  for (
-    let offset = 0;
-    offset <
-    (searchForward
-      ? nowDate.getTime() - startDate.getTime()
-      : MAXIMUM_DAYS * MILLI_SECONDS_PER_DAY);
-    offset += CHUNK_SIZE
-  ) {
-    const endTime = new Date(
-      searchForward
-        ? startDate.getTime() + offset + CHUNK_SIZE
-        : startDate.getTime() - offset,
-    ).toISOString();
-    const startTime = new Date(
-      searchForward
-        ? startDate.getTime() + offset
-        : startDate.getTime() - offset - CHUNK_SIZE,
-    ).toISOString();
-
-    console.log(`Searching log entry between ${startTime} and ${endTime}`);
-
-    const response = await queryLog(accessToken, endTime, startTime, filter, 1);
-
-    if (response.entries?.length) return response.entries.find(Boolean) || null;
-  }
-
-  return null;
+  return rows;
 };
 
 const streamFile = (
@@ -260,9 +166,7 @@ export const GET = async (request: NextRequest) => {
     if (!(body.clusterName && body.endTime && body.namespace && body.startTime))
       return NextResponse.json({ message: 'Invalid Form' }, { status: 400 });
 
-    const accessToken = await getAccessToken();
-
-    const fileName = await fetchLogsBetween(accessToken, body);
+    const fileName = await fetchLogsBetween(body);
 
     const data = streamFile(fileName);
 
@@ -295,53 +199,53 @@ export const POST = async (request: NextRequest) => {
         body.clusterName &&
         body.namespace &&
         body.startBlockHeight &&
-        (!body.endBlockHeight || body.endBlockHeight >= body.startBlockHeight)
+        body.endBlockHeight >= body.startBlockHeight
       )
     )
       return NextResponse.json({ message: 'Invalid Form' }, { status: 400 });
 
-    const accessToken = await getAccessToken();
+    const { rows: startBlockRows } = await DatabaseClient.pool.query<LogEntry>(`
+      SELECT timestamp
+      FROM slogs
+      WHERE (
+        "jsonPayload" @@ '$.blockHeight == ${body.startBlockHeight}'
+        AND "jsonPayload" @@ '$.type == "${START_BLOCK_EVENT_TYPE}"'
+        AND "resourceLabels" @@ '$.cluster_name == "${body.clusterName}"'
+        AND "resourceLabels" @@ '$.namespace_name == "${body.namespace}"'
+        AND (${POD_FILTER})
+      )
+    `);
 
-    const beginBlockFilter = `
-jsonPayload.blockHeight=${body.startBlockHeight}
-jsonPayload.type="${START_BLOCK_EVENT_TYPE}"
-resource.labels.cluster_name="${body.clusterName}"
-resource.labels.namespace_name="${body.namespace}"
-    `;
-    const commitBlockFinishFilter = `
-jsonPayload.blockHeight=${body.endBlockHeight}
-jsonPayload.type="${COMMIT_BLOCK_FINISH_EVENT_TYPE}"
-resource.labels.cluster_name="${body.clusterName}"
-resource.labels.namespace_name="${body.namespace}"
-    `;
-
-    const foundBeginBlock = await searchForLogEntry({
-      accessToken,
-      filter: beginBlockFilter,
-    });
-
-    if (!foundBeginBlock)
+    if (!startBlockRows.length)
       return NextResponse.json(
         { message: 'Start time search exhausted' },
         { status: 404 },
       );
 
-    const foundCommitBlockFinish = await searchForLogEntry({
-      accessToken,
-      filter: commitBlockFinishFilter,
-      searchForward: true,
-      startTime: new Date(foundBeginBlock.timestamp),
-    });
+    const { rows: endBlockRows } = await DatabaseClient.pool.query<LogEntry>(`
+      SELECT timestamp
+      FROM slogs
+      WHERE (
+        "jsonPayload" @@ '$.blockHeight == ${body.endBlockHeight}'
+        AND "jsonPayload" @@ '$.type == "${COMMIT_BLOCK_FINISH_EVENT_TYPE}"'
+        AND "resourceLabels" @@ '$.cluster_name == "${body.clusterName}"'
+        AND "resourceLabels" @@ '$.namespace_name == "${body.namespace}"'
+        AND (${POD_FILTER})
+      )
+    `);
 
-    if (!foundCommitBlockFinish)
+    if (!endBlockRows.length)
       return NextResponse.json(
         { message: 'End time search exhausted' },
         { status: 404 },
       );
 
+    const beginBlockTimestamp = startBlockRows.find(Boolean)?.timestamp;
+    const endBlockTimestamp = endBlockRows.find(Boolean)?.timestamp;
+
     return NextResponse.json({
-      endTime: foundCommitBlockFinish.timestamp,
-      startTime: foundBeginBlock.timestamp,
+      endTime: endBlockTimestamp,
+      startTime: beginBlockTimestamp,
     });
   } catch (err) {
     return NextResponse.json({ message: String(err) }, { status: 500 });
