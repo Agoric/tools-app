@@ -2,11 +2,13 @@
   "author": "Agoric",
   "dependencies": {
     "next": "15.0.3",
+    "pg": "8.13.0",
     "tmp": "^0.2.3"
   },
   "devDependencies": {
     "@svgr/webpack": "8.1.0",
     "@types/node": "22.7.5",
+    "@types/pg": "8.11.10",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/tmp": "^0.2.6",
