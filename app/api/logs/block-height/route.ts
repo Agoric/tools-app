@@ -51,7 +51,7 @@ type LogEntry = {
 };
 
 const COMMIT_BLOCK_FINISH_EVENT_TYPE = 'cosmic-swingset-commit-block-finish';
-const POD_FILTER = `"resourceLabels" @@ '$.pod_name == "follower-0"' OR "resourceLabels" @@ '$.pod_name == "fork1-0"' OR "resourceLabels" @@ '$.pod_name == "validator-primary-0"'`;
+const POD_FILTER = `("resourceLabels" ->> 'pod_name') IN ('follower-0', 'fork1-0', 'validator-primary-0')`;
 const START_BLOCK_EVENT_TYPE = 'cosmic-swingset-begin-block';
 
 type RequestContext = {
@@ -121,9 +121,9 @@ const queryLog = async (
     SELECT *
     FROM slogs
     WHERE (
-      "resourceLabels" @@ '$.cluster_name == "${body.clusterName}"'
-      AND "resourceLabels" @@ '$.namespace_name == "${body.namespace}"'
-      AND (${POD_FILTER})
+      ("resourceLabels" ->> 'cluster_name') = '${body.clusterName}'
+      AND ("resourceLabels" ->> 'namespace_name') = '${body.namespace}'
+      AND ${POD_FILTER}
       AND "timestamp" >= '${body.startTime}'
       AND "timestamp" <= '${body.endTime}'
     )
@@ -210,12 +210,13 @@ export const POST = async (request: NextRequest) => {
       SELECT timestamp
       FROM slogs
       WHERE (
-        "jsonPayload" @@ '$.blockHeight == ${body.startBlockHeight}'
-        AND "jsonPayload" @@ '$.type == "${START_BLOCK_EVENT_TYPE}"'
-        AND "resourceLabels" @@ '$.cluster_name == "${body.clusterName}"'
-        AND "resourceLabels" @@ '$.namespace_name == "${body.namespace}"'
-        AND (${POD_FILTER})
+        ("jsonPayload" ->> 'blockHeight')::integer = ${body.startBlockHeight}
+        AND ("jsonPayload" ->> 'type') = '${START_BLOCK_EVENT_TYPE}'
+        AND ("resourceLabels" ->> 'cluster_name') = '${body.clusterName}'
+        AND ("resourceLabels" ->> 'namespace_name') = '${body.namespace}'
+        AND ${POD_FILTER}
       )
+      ORDER BY "timestamp" ASC
     `);
 
     if (!startBlockRows.length)
@@ -228,12 +229,13 @@ export const POST = async (request: NextRequest) => {
       SELECT timestamp
       FROM slogs
       WHERE (
-        "jsonPayload" @@ '$.blockHeight == ${body.endBlockHeight}'
-        AND "jsonPayload" @@ '$.type == "${COMMIT_BLOCK_FINISH_EVENT_TYPE}"'
-        AND "resourceLabels" @@ '$.cluster_name == "${body.clusterName}"'
-        AND "resourceLabels" @@ '$.namespace_name == "${body.namespace}"'
-        AND (${POD_FILTER})
+        ("jsonPayload" ->> 'blockHeight')::integer = ${body.endBlockHeight}
+        AND ("jsonPayload" ->> 'type') = '${COMMIT_BLOCK_FINISH_EVENT_TYPE}'
+        AND ("resourceLabels" ->> 'cluster_name') = '${body.clusterName}'
+        AND ("resourceLabels" ->> 'namespace_name') = '${body.namespace}'
+        AND ${POD_FILTER}
       )
+      ORDER BY "timestamp" ASC
     `);
 
     if (!endBlockRows.length)
