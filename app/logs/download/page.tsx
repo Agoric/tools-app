@@ -122,13 +122,11 @@ const Page = () => {
           <label>End Block Height</label>
           <TextInput
             className="border border-solid border-gray disabled:bg-gray-200 w-full"
-            disabled
-            // onChange={({ target: { value } }) =>
-            //   !isNaN(Number(value)) &&
-            //   setState((prevState) => ({ ...prevState, endBlockHeight: value }))
-            // }
-            // value={state.endBlockHeight}
-            value={state.startBlockHeight}
+            onChange={({ target: { value } }) =>
+              !isNaN(Number(value)) &&
+              setState((prevState) => ({ ...prevState, endBlockHeight: value }))
+            }
+            value={state.endBlockHeight}
           />
         </div>
       </div>
